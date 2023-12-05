@@ -11,34 +11,34 @@ library(tidyverse)
 #filedir <- "C:/Users/badhu/Documents/DOC/"
 #filedir <- "//crcdb14/imaging/DOC/202102_data/MOTIC/AnalysisOct2022/"
 
-brdoc <- read_excel("DOC_analysis_20231124.xlsx", 1) %>%
+brdoc <- read_excel("DOC_analysis_20231201.xlsx", 1) %>%
 #brdoc <- read_excel(paste(filedir, "DOC_analysis_20231124.xlsx", sep = ""), 1) %>%
   mutate(PtId = as.factor(PtId), Gender = as.factor(Gender), SmokingHx = as.factor(SmokingHx), SiteRisk = as.factor(SiteRisk)) %>% 
   mutate(DOB = as.Date(DOB), BrDate = as.Date(VisitDate),PathDate = as.Date(PathDate), outdate = as.Date(outdate))
 
-docvs <- read_excel("DOC_analysis_20231124.xlsx", 2) %>% mutate(PtId = as.factor(PtId)) %>% mutate(VsDate = as.Date(VsDate))
+docvs <- read_excel("DOC_analysis_20231201.xlsx", 2) %>% mutate(PtId = as.factor(PtId)) %>% mutate(VsDate = as.Date(VsDate))
 
 mergid <- brdoc %>% filter(!is.na(mBarcode)) %>% pull(Barcode)
 nomergid <- brdoc %>% filter(is.na(mBarcode)) %>% pull(Barcode)
 mergept <- brdoc %>% filter(!is.na(mBarcode)) %>% select(PtId, BrushingId, Barcode, mBarcode)
 slide1 <- brdoc %>% filter(!is.na(Barcode1)) %>% pull(Barcode)
 
-doc1 <- brdoc %>% select(PtId, BrushingId, DOB, Gender, Smoking, SmokingHx, Barcode, mBarcode, newSet3, newSetB, newSetD,
+doc1 <- brdoc %>% select(PtId, BrushingId, DOB, Gender, Smoking, SmokingHx, Barcode, mBarcode, newSet3, newSet4,
                          BrDate, outdate, out, outProg, outProg3, outProg5, 
-                         BrushingSampleCode, PathDate, Dx, Dx2, LesionCode, SiteRisk) %>%
+                         BrushingSampleCode, PathDate, Dx, Dx2, Dx3, LesionCode, SiteRisk) %>%
   arrange(PtId, BrDate) %>% mutate(PtBrLs = paste(PtId, BrDate, LesionCode, sep = "_"))
 
 doc2 <- docvs %>% select(PtId, VsDate, LesionCode, AnatomicDescription, AnatomicSiteName, LsWLGrp2, LesionFV, LesionLength, LesionWidth, LesionThickness) %>% 
   arrange(PtId, VsDate) %>% mutate(PtBrLs = paste(PtId, VsDate, LesionCode, sep = "_")) %>% select(-c(PtId, LesionCode))
 
 docbrvs <- left_join(doc1, doc2) %>% select(-PtBrLs) %>%
-  mutate(Pathgrp = as.factor(ifelse(is.na(Dx2), NA,
-                                    ifelse(Dx2 %in% c("VC", "SCC"), "3", 
-                                           ifelse(Dx2 %in% c("D3", "CIS"), "2", 
-                                                  ifelse(Dx2 %in% c("LGL", "LD", "LD1", "D1", "D2", "VHYP"), "1", 
-                                                         ifelse(Dx2 %in% c("Acanthosis", "CAN", "FEP", "Granuloma", "HYP(O)K", 
+  mutate(Pathgrp = as.factor(ifelse(is.na(Dx3), NA,
+                                    ifelse(Dx3 %in% c("VC", "SCC"), "3", 
+                                           ifelse(Dx3 %in% c("D3", "CIS"), "2", 
+                                                  ifelse(Dx3 %in% c("LGL", "LD", "LD1", "D1", "D2", "VHYP"), "1", 
+                                                         ifelse(Dx3 %in% c("Acanthosis", "CAN", "FEP", "Granuloma", "HYP(O)K", 
                                                                           "Inflammation", "LM", "LP", "PAP", "Scar", "trauma"), "0.5",
-                                                                ifelse(Dx2 %in% c("normal"), "0", NA)))))))) %>%
+                                                                ifelse(Dx3 %in% c("normal"), "0", NA)))))))) %>%
   mutate(Pathgrp = factor(Pathgrp, levels = c("0", "0.5", "1", "2", "3"))) %>%
   mutate(Path = as.factor(ifelse(is.na(Pathgrp), NA, ifelse(Pathgrp %in% c("3", "2"), "1", "0")))) %>%
   mutate(Age = as.numeric(round((BrDate - DOB)/365.25, 2)))
@@ -161,7 +161,7 @@ docgrp_wide2 <- docgrp %>% filter(Barcode %in% mergid) %>% left_join(., docbrvs 
   mutate(across(CoB_3Cnt:CoE_7Cnt, ~./CoTotal*100, .names = 'pr{col}')) %>% rename(Barcode = "mBarcode")
 names(docgrp_wide2) <- gsub("Cnt", "", names(docgrp_wide2)) 
 
-left_join(mdocbinsup, docgrp_wide2) %>% rename(Barcode = "mBarcode") %>% select(PtId, Barcode, total, CoTotal, everything())
+#left_join(mdocbinsup, docgrp_wide2) %>% rename(Barcode = "mBarcode") %>% select(PtId, Barcode, total, CoTotal, everything())
 
 docgrp_wide1 <- docgrp %>% left_join(., docbrvs %>% select(PtId, Barcode, mBarcode)) %>% filter(is.na(mBarcode)) %>% select(Barcode, DNA_Index, CoB, CoD, CoE) %>%  
   pivot_longer(cols = c(CoB, CoD, CoE), names_to = "CoType", values_to = "CoGrp") %>% arrange(Barcode, CoType) %>%
@@ -191,8 +191,8 @@ docbrvs12 <-rbind(docbrvs1, docbrvs2) %>% select(Barcode, everything())
 
 doc_morphvs <- left_join(docgrp_wide, docbrvs12) %>%
   mutate(newSet3 = factor(newSet3, levels = c("train", "test", "valid")),
-         newSetB = factor(newSetB, levels = c("train", "test", "valid")),
-         newSetD = factor(newSetD, levels = c("train", "test", "valid")),
+         newSetB = factor(newSet4, levels = c("train", "test", "valid")),
+         #newSetD = factor(newSetD, levels = c("train", "test", "valid")),
          Pathgrp2 = ifelse(is.na(Pathgrp), "NA", 
                            ifelse(Pathgrp %in% c("2", "3"), "2", 
                                   ifelse(Pathgrp %in% c("0.5", "1") , "1", "0")))) %>%
@@ -696,7 +696,8 @@ pt %>% select(minAge, Gender, SmokingGrp) %>%
 
 lesion <- docbrvs12 %>% 
   mutate(SiteGrp = ifelse(SiteRisk == "1", "BM/GING/HP", ifelse(SiteRisk == "2", "SP", "TONG/FOM"))) %>%
-  mutate(PathGrp3 = ifelse(Pathgrp == "0", "Normal control", ifelse(Pathgrp %in% c("0.5", "1"), "Reactive/LGL", "HGL/SCC"))) %>%
+  mutate(PathGrp3 = ifelse(Pathgrp == "0", "Normal control",
+                           ifelse(Pathgrp %in% c("0.5", "1"), "Reactive/LGL", "HGL/SCC"))) %>%
   mutate(PathGrp3 = factor(PathGrp3, levels = c("Normal control", "Reactive/LGL", "HGL/SCC"))) %>%
   select(PathGrp3, SiteGrp, LsWLGrp2, LesionLength, LesionWidth)
 
@@ -713,4 +714,65 @@ lesion %>% tbl_summary(by = "LsWLGrp2",
 
 doc_morphvs %>% filter(Barcode == "512952133") %>% select(Barcode, CoTotal, CoB_7, CoB_abnormal_p)
 
-doc_morphvs %>% filter(Pathgrp2 == "2", )
+# table of cellularity
+doc_morphvs <- doc_morphvs %>% mutate(Pathgrp2 = as.factor(Pathgrp2))
+cnpbp <- ggboxplot(doc_morphvs, x = "LsWLGrp2", y = "CoTotal", outlier.shape = NA)+
+  stat_compare_means(comparison = list(c("Negative/Scar", "Positive")),
+                     label.y = c(10000, 12000))+ 
+  scale_y_continuous(limits = c(0, 18000))+
+  xlab("Clinical group") +
+  ylab("Isolated epithelial cells")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"))
+
+pnpbp <- ggboxplot(doc_morphvs, x = "Pathgrp2", y = "CoTotal", outlier.shape = NA)+
+  stat_compare_means(comparison = list(c("0", "1"), c("0", "2"), c("1", "2")),
+                     label.y = c(10000, 12000, 15000))+ 
+  scale_y_continuous(limits = c(0, 18000))+
+  scale_x_discrete(limits = c("0", "1", "2", "NA"), labels = c("Normal", "Reactive/LGL", "HGL/SCC", "non-current path"))+
+  xlab("Pathology") +
+  ylab("Isolated epithelial cells")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"))
+
+
+ggarrange(cnpbp, pnpbp)
+#dxbp + geom_pwc(aes(group = Pathgrp2), tip.leghth = 0, method = "wilcox_test")
+
+test <- doc_morphvs %>% filter(!is.na(Dx3)) %>% droplevels()
+wilcox.test(doc_morphvs$CoTotal~doc_morphvs$LsWLGrp2)
+kruskal.test(test$CoTotal~test$Pathgrp2)
+pairwise.wilcox.test(test$CoTotal, test$Pathgrp2, p.adjust.method = "BH")
+
+# lesion size and cellularity ----
+names(doc_morphvs)
+ls_size <- doc_morphvs %>% filter(LsWLGrp2 == "Positive") %>% droplevels() %>%
+  select(LsWLGrp2, CoTotal, LesionLength, LesionWidth) %>% 
+  mutate(maxdim = ifelse(LesionLength >= LesionWidth, LesionLength, LesionWidth))
+
+ggplot(data = ls_size) +
+  geom_point(aes(x = maxdim, y = CoTotal))+
+  xlab("greatest dimension of clinically positive lesions (mm)") +
+  ylab("Isolated epithelial cells")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"))
+
+# table of DI
+celldi <- doc_morphvs %>% select(Barcode, Pathgrp2, LsWLGrp2) %>% left_join(., docgrp) %>% filter(!is.na(DNA_Index)) %>% droplevels()
+celldi %>% group_by(Pathgrp2) %>% summarize(mean=median(DNA_Index))
+range(celldi$DNA_Index)
+
+celldi %>% filter(is.na(DNA_Index))
+
+dicnpbp <- ggboxplot(celldi, x = "LsWLGrp2", y = "DNA_Index")+
+  #stat_compare_means(comparison = list(c("Negative/Scar", "Positive")))+
+  #scale_y_continuous(limits = c(0, 18000))+
+  xlab("Clinical group") +
+  ylab("Isolated epithelial cells")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"))
+
+pnpbp <- ggboxplot(doc_morphvs, x = "Pathgrp2", y = "CoTotal", outlier.shape = NA)+
+  stat_compare_means(comparison = list(c("0", "1"), c("0", "2"), c("1", "2")),
+                     label.y = c(10000, 12000, 15000))+ 
+  scale_y_continuous(limits = c(0, 18000))+
+  scale_x_discrete(limits = c("0", "1", "2", "NA"), labels = c("Normal", "Reactive/LGL", "HGL/SCC", "non-current path"))+
+  xlab("Pathology") +
+  ylab("Isolated epithelial cells")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"))
