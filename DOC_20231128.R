@@ -209,6 +209,7 @@ doc_morphvs <- left_join(docgrp_wide, docbrvs12) %>%
 # mdoc_morphvs %>% filter(CntCoD_7 < 1, CoDTotal >= 400, CoD_abnormal_p >= 0.47) %>% group_by(Pathgrp2, outProg) %>% summarize(count = n())
 
 # table of cases ----
+names(doc_morphvs)
 doc_morphvs %>%
   group_by(Pathgrp, newSetB) %>% summarize(count = n()) %>% pivot_wider(names_from = newSetB, values_from = count)
 
@@ -714,7 +715,7 @@ lesion %>% tbl_summary(by = "LsWLGrp2",
 
 doc_morphvs %>% filter(Barcode == "512952133") %>% select(Barcode, CoTotal, CoB_7, CoB_abnormal_p)
 
-# table of cellularity
+# table of cellularity ----
 doc_morphvs <- doc_morphvs %>% mutate(Pathgrp2 = as.factor(Pathgrp2))
 cnpbp <- ggboxplot(doc_morphvs, x = "LsWLGrp2", y = "CoTotal", outlier.shape = NA)+
   stat_compare_means(comparison = list(c("Negative/Scar", "Positive")),
@@ -754,25 +755,122 @@ ggplot(data = ls_size) +
   ylab("Isolated epithelial cells")+
   theme(panel.background = element_rect(fill = NA, color = "gray"))
 
-# table of DI
-celldi <- doc_morphvs %>% select(Barcode, Pathgrp2, LsWLGrp2) %>% left_join(., docgrp) %>% filter(!is.na(DNA_Index)) %>% droplevels()
-celldi %>% group_by(Pathgrp2) %>% summarize(mean=median(DNA_Index))
-range(celldi$DNA_Index)
+# plots of DI ----
+celldi <- doc_morphvs %>% select(Barcode, Pathgrp2, Pathgrp, Path, LsWLGrp2) %>% left_join(., docgrp) %>% filter(!is.na(DNA_Index)) %>% droplevels()
+celldi %>% group_by(Pathgrp) %>% summarize(mean=mean(DNA_Index))
 
+celldi_path <- celldi %>% filter(!is.na(Pathgrp)) %>% droplevels()
+t.test(celldi_path$DNA_Index~celldi_path$Path)
+t.test(celldi$DNA_Index~celldi$LsWLGrp2)
+
+names(celldi_path)
 celldi %>% filter(is.na(DNA_Index))
 
 dicnpbp <- ggboxplot(celldi, x = "LsWLGrp2", y = "DNA_Index")+
-  #stat_compare_means(comparison = list(c("Negative/Scar", "Positive")))+
+  stat_compare_means(comparison = list(c("Negative/Scar", "Positive")),
+                     label = "p.signif")+
   #scale_y_continuous(limits = c(0, 18000))+
   xlab("Clinical group") +
   ylab("Isolated epithelial cells")+
   theme(panel.background = element_rect(fill = NA, color = "gray"))
 
-pnpbp <- ggboxplot(doc_morphvs, x = "Pathgrp2", y = "CoTotal", outlier.shape = NA)+
-  stat_compare_means(comparison = list(c("0", "1"), c("0", "2"), c("1", "2")),
-                     label.y = c(10000, 12000, 15000))+ 
-  scale_y_continuous(limits = c(0, 18000))+
-  scale_x_discrete(limits = c("0", "1", "2", "NA"), labels = c("Normal", "Reactive/LGL", "HGL/SCC", "non-current path"))+
+dipnbp <- ggboxplot(celldi_path, x = "Path", y = "DNA_Index")+
+  stat_compare_means(comparison = list(c("0", "1")),
+                     label = "p.signif")+
+  #scale_y_continuous(limits = c(0, 18000))+
+  scale_x_discrete(limits = c("0", "1"), labels = c("Normal/Reactive/LGL", "HGL/SCC"))+
   xlab("Pathology") +
   ylab("Isolated epithelial cells")+
   theme(panel.background = element_rect(fill = NA, color = "gray"))
+
+ggarrange(dicnpbp, dipnbp, nrow = 1, ncol = 2)
+
+# cdihisto <- ggplot(data = celldi)+
+#   geom_histogram(aes(x = DNA_Index, fill = LsWLGrp2), binwidth = 0.05, color = "gray60", )+
+#   scale_fill_manual(values = c("#F7C1BB", "#2274A5"), labels = c("Negative\nScar", "Positive"), name = "Clinical")+
+#   scale_y_sqrt()+ ylab("sqrt(Isolated epithelial cells)")+xlab("DNA Index")+
+#   scale_x_continuous(limits = c(0,9), breaks = seq(0, 9, 0.5))+theme(panel.background = element_rect(fill = NA, color = "gray"))
+# 
+# pdihisto <- ggplot(data = celldi_path)+
+#   geom_histogram(aes(x = DNA_Index, fill = Path), binwidth = 0.05, color = "gray50", )+
+#   scale_fill_manual(values = c("#73A580", "#B80C09"), labels = c("normal\nreactive\nLGL", "HGL/SCC"), name = "Pathology")+
+#   scale_y_sqrt()+ ylab("sqrt(Isolated epithelial cells)")+xlab("DNA Index")+
+#   scale_x_continuous(limits = c(0,9), breaks = seq(0, 9, 0.5))+theme(panel.background = element_rect(fill = NA, color = "gray"))
+
+
+# bin plots ----
+names(doc_morphvs)
+binname_order <- factor(c(binname, "bin999"), levels = c(binname, "bin999"))
+bin_long <- doc_morphvs %>% select(Barcode, LsWLGrp2, Path, CoTotal, bin85:bin999) %>%
+  pivot_longer(cols = c(bin85:bin999), names_to = "bins", values_to = "count") %>%
+  mutate(bins = ifelse(is.na(bins), "bin999", as.vector(bins))) %>%
+  mutate(bins = factor(bins, levels = binname_order))
+
+cbinbar <- ggplot(bin_long)+
+  geom_bar(aes(x = bins, y = count, fill = LsWLGrp2), stat = "identity")+
+  scale_y_sqrt()+ ylab("sqrt(Isolated epithelial cells)")+xlab("Bins of DNA Index")+
+  scale_fill_manual(values = c("#F7C1BB", "#2274A5"), labels = c("Negative\nScar", "Positive"), name = "Clinical")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"),
+        axis.text.x = element_text(angle = 90, size = 8))
+
+pbinbar <- ggplot(bin_long %>% filter(!is.na(Path)) %>% droplevels())+
+  geom_bar(aes(x = bins, y = count, fill = Path), stat = "identity")+
+  scale_y_sqrt()+ ylab("sqrt(Isolated epithelial cells)")+xlab("Bins of DNA Index")+
+  scale_fill_manual(values = c("#73A580", "#B80C09"), labels = c("normal\nreactive\nLGL", "HGL/SCC"), name = "Pathology")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"),
+        axis.text.x = element_text(angle = 90, size = 8))
+
+ggarrange(cbinbar+rremove("xlab"), pbinbar, nrow = 2, ncol = 1)
+
+prbinname <- c(paste("prbin", seq(80, 260, by = 5), sep=""), "prbin999")
+prbinname_order <- factor(c(prbinname), levels = c(prbinname))
+prop_bin_long <- doc_morphvs %>% select(Barcode, LsWLGrp2, Path, CoTotal, prbin85:prbin999) %>%
+  pivot_longer(cols = c(prbin85:prbin999), names_to = "prbins", values_to = "count") %>%
+  mutate(prbins = factor(prbins, levels = prbinname_order))
+
+cprbinbar <- ggplot(prop_bin_long)+
+  geom_bar(aes(x = prbins, y = count, fill = LsWLGrp2), stat = "identity")+
+  scale_y_sqrt()+ylab("sqrt(Isolated epithelial cells)")+xlab("Bins of DNA Index")+
+  scale_fill_manual(values = c("#F7C1BB", "#2274A5"), labels = c("Negative\nScar", "Positive"), name = "Clinical")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"),
+        axis.text.x = element_text(angle = 90, size = 8))
+
+pprbinbar <- ggplot(prop_bin_long %>% filter(!is.na(Path)) %>% droplevels())+
+  geom_bar(aes(x = prbins, y = count, fill = Path), stat = "identity")+
+  scale_y_sqrt()+ylab("sqrt(Isolated epithelial cells)")+xlab("Bins of DNA Index")+
+  scale_fill_manual(values = c("#73A580", "#B80C09"), labels = c("normal\nreactive\nLGL", "HGL/SCC"), name = "Pathology")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"),
+        axis.text.x = element_text(angle = 90, size = 8))
+
+ggarrange(cprbinbar+rremove("xlab"), pprbinbar, nrow = 2, ncol = 1)
+
+names(doc_morphvs)
+
+co_long <- doc_morphvs %>% select(Barcode, LsWLGrp2, Path, CoTotal, CoB_3:CoB_7, prCoB_3:prCoE_7, CoB_normal_p, CoB_abnormal_p) %>%
+  pivot_longer(cols = c(CoB_3:CoB_abnormal_p), names_to = "cos", values_to = "count")
+
+ccohisto <- ggplot(co_long %>% filter(cos %in% c("CoB_3", "prCoB_3", "CoB_5", "prCoB_5", "CoB_6", "prCoB_6", "CoB_7", "prCoB_7")) %>%
+       mutate(cos = as.factor(cos)))+
+  #geom_bar(aes(x = factor(cos, levels = c("CoB_3", "prCoB_3", "CoB_5", "prCoB_5", "CoB_6", "prCoB_6", "CoB_7", "prCoB_7")),
+  geom_bar(aes(x = cos, y = count, fill = LsWLGrp2), stat = "identity")+
+  scale_fill_manual(values = c("#F7C1BB", "#2274A5"), labels = c("Negative\nScar", "Positive"), name = "Clinical")+
+  scale_y_sqrt()+
+  #scale_x_discrete(labels = c("diploid", "diploid%", "cycling", "cycling%", "tetraploid", "tetraploid%", "aneuploid", "aneuploid%"))+
+  scale_x_discrete(labels = c("diploid", "cycling", "tetraploid", "aneuploid", "diploid%", "cycling%", "tetraploid%", "aneuploid%"))+
+  ylab("sqrt(Isolated epithelial cells)")+xlab("Ploidy Groups - by counts & percentage")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"),
+        axis.text.x = element_text(angle = 0, size = 8))
+
+pcohisto <- ggplot(co_long %>% filter(cos %in% c("CoB_3", "prCoB_3", "CoB_5", "prCoB_5", "CoB_6", "prCoB_6", "CoB_7", "prCoB_7"), !is.na(Path)) %>%
+         mutate(cos = as.factor(cos)))+
+  #geom_bar(aes(x = factor(cos, levels = c("CoB_3", "prCoB_3", "CoB_5", "prCoB_5", "CoB_6", "prCoB_6", "CoB_7", "prCoB_7")),
+  geom_bar(aes(x = cos, y = count, fill = Path), stat = "identity")+
+  scale_fill_manual(values = c("#73A580", "#B80C09"), labels = c("normal\nreactive\nLGL", "HGL/SCC"), name = "Pathology")+
+  scale_y_sqrt()+
+  #scale_x_discrete(labels = c("diploid", "diploid%", "cycling", "cycling%", "tetraploid", "tetraploid%", "aneuploid", "aneuploid%"))+
+  scale_x_discrete(labels = c("diploid", "cycling", "tetraploid", "aneuploid", "diploid%", "cycling%", "tetraploid%", "aneuploid%"))+
+  ylab("sqrt(Isolated epithelial cells)")+xlab("Ploidy Groups - by counts & percentage")+
+  theme(panel.background = element_rect(fill = NA, color = "gray"),
+        axis.text.x = element_text(angle = 0, size = 8))
+
+ggarrange(ccohisto, pcohisto, nrow = 2, ncol = 1)
