@@ -23,7 +23,7 @@ nomergid <- brdoc %>% filter(is.na(mBarcode)) %>% pull(Barcode)
 mergept <- brdoc %>% filter(!is.na(mBarcode)) %>% select(PtId, BrushingId, Barcode, mBarcode)
 slide1 <- brdoc %>% filter(!is.na(Barcode1)) %>% pull(Barcode)
 
-doc1 <- brdoc %>% select(PtId, BrushingId, DOB, Gender, Smoking, SmokingHx, Barcode, mBarcode, newSet3, newSet4,
+doc1 <- brdoc %>% select(PtId, BrushingId, DOB, Gender, Smoking, SmokingHx, Barcode, mBarcode, newSet3, newSet4, newSet5,
                          BrDate, outdate, out, outProg, outProg3, outProg5, 
                          BrushingSampleCode, PathDate, Dx, Dx2, Dx3, LesionCode, SiteRisk) %>%
   arrange(PtId, BrDate) %>% mutate(PtBrLs = paste(PtId, BrDate, LesionCode, sep = "_"))
@@ -42,6 +42,32 @@ docbrvs <- left_join(doc1, doc2) %>% select(-PtBrLs) %>%
   mutate(Pathgrp = factor(Pathgrp, levels = c("0", "0.5", "1", "2", "3"))) %>%
   mutate(Path = as.factor(ifelse(is.na(Pathgrp), NA, ifelse(Pathgrp %in% c("3", "2"), "1", "0")))) %>%
   mutate(Age = as.numeric(round((BrDate - DOB)/365.25, 2)))
+
+# matchit ----
+library(MatchIt)
+library(caTools)
+
+# get the number of cases based on different cutoff and criteria
+BmatchID <- doc_morphvs %>% filter(Pathgrp %in% c("0", "2", "3"), CoB_7 < 1, CoTotal >= 400) %>% pull(Barcode)
+
+doc_match <- docbrvs %>% filter(Barcode %in% slide1) %>% droplevels() %>% filter(Barcode %in% BmatchID) %>% droplevels() %>%
+  select(Barcode, Path, Pathgrp) %>% rowid_to_column(var = "rowid")
+
+# m.out <- matchit(I(Path == "1")~Age+SmokingHx+Gender+SiteRisk, data = doc_match, cliper = c(age = 2), distance = "euclidean", ratio = 1)
+m.out <- matchit(I(Path == "1")~Path, data = doc_match, ratio = 1)
+summary(m.out)
+m.data <- match.data(m.out, subclass = "matched_id") %>% arrange(matched_id, Path, Barcode)
+
+m.data_matchedid <- m.data %>% select(matched_id) %>% unique()
+sample <- sample.split(m.data_matchedid$matched_id, SplitRatio = 0.7)
+train <- subset(m.data_matchedid, sample == TRUE) %>% pull(matched_id)
+test <- subset(m.data_matchedid, sample == FALSE) %>% pull(matched_id)
+
+m.data_new <- m.data %>% mutate(newSetD = as.factor(ifelse(matched_id %in% train, "train", "test"))) %>% select(Barcode, newSetD) %>%
+  mutate(newSetD = factor(newSetD, levels = c("train", "test")))
+m.newSet <- left_join(doc_match, m.data_new) %>% mutate(newSetD = as.factor(ifelse(is.na(newSetD), "valid", ifelse(newSetD == "train", "train", "test"))))
+
+#write.table(m.newSet, "newSetB_20231206.txt", sep = " ")
 
 # read morphology files ----
 postDocCells <- readRDS("docells.rds")
@@ -256,7 +282,7 @@ library(klaR)
 library(pROC)
 library(maxstat)
 
-setname <- "newSet3"
+setname <- "newSet5"
 cotype <- "CoTotal"
 co7type <- "CoB_7"
 cnt7 <- 1
@@ -266,6 +292,8 @@ if(!is.na(setname)){
   if(setname == "newSet2"){
     pagrp <- c("0", "0.5", "2", "3")
   } else if(setname == "newSet3"){
+    pagrp <- c("0", "2", "3")
+  } else if(setname == "newSet5"){
     pagrp <- c("0", "2", "3")
   } else if(setname == "newSet4"){
     pagrp <- c("0.5", "2", "3")
@@ -458,20 +486,20 @@ tt2 <- ttheme_default(rowhead = list(fg_params = list(fontfamily = "arial", font
                                   bg_params = list(fill = c("white", "gray", "gray", "white"), col = NA)),
                       colhead = list(fg_params = list(fontfamily = "arial", fontface = "bold", fontsize = 10)))
 
-setname <- "newSet3"
+setname <- "newSet5"
 cotype <- "CoTotal"
 co7type <- "CoB_7"
 prop5_name <- "prCoB_5"
 propAb_name <- "CoB_abnormal_p"
 
 cnt7 <- 1
-prop5_co <- 2.32
-propAb_co <- 2.42
+prop5_co <- 2.93
+propAb_co <- 2.98
 
 if(!is.na(setname)){
   if(setname == "newSet2"){
     pagrp <- c("0", "0.5", "2", "3")
-  } else if(setname == "newSet3"){
+  } else if(setname == "newSet5"){
     pagrp <- c("0", "2", "3")
   } else if(setname == "newSet4"){
     pagrp <- c("0.5", "2", "3")
@@ -574,8 +602,8 @@ library(survival)
 
 # Grp5_p <- 0.45
 # GrpAb_p <- 0.47
-Grp5_7p <- 2.32
-GrpAb_7p <- 2.42
+Grp5_7p <- 2.93
+GrpAb_7p <- 2.98
 
 # cnt7 <- 1
 # survyear <- 5
@@ -874,3 +902,17 @@ pcohisto <- ggplot(co_long %>% filter(cos %in% c("CoB_3", "prCoB_3", "CoB_5", "p
         axis.text.x = element_text(angle = 0, size = 8))
 
 ggarrange(ccohisto, pcohisto, nrow = 2, ncol = 1)
+
+docgrp %>% left_join(., docbrvs12) %>% select(Barcode, LsWLGrp2, Path, CoB) %>% filter(!is.na(CoB)) %>% droplevels() %>% select(LsWLGrp2, CoB) %>% 
+  tbl_summary(by = "LsWLGrp2", 
+              statistic = list(all_categorical()~"{n} ({p}%)"), 
+              CoB ~ "{mean} ({sd})") %>%
+  add_p(test = list(all_continuous()~"wilcox.test",
+                    all_categorical()~"chisq.test")) %>%
+  add_overall()
+
+co_long %>% select(Barcode, LsWLGrp2, Path) %>% distinct(.keep_all = TRUE) %>% group_by(Path) %>% summarize(count = n())
+
+co_long %>% filter(cos %in% c("prCoB_3", "prCoB_5", "prCoB_6", "prCoB_7")) %>% select(Path, LsWLGrp2, cos, count) %>%
+#co_long %>% filter(cos %in% c("prCoB_3", "prCoB_5", "prCoB_6", "prCoB_7")) %>% select(LsWLGrp2, cos, count) %>%
+  group_by(Path, cos) %>% summarize(meann = sd(count)) %>% pivot_wider(names_from = "Path", values_from = meann)
