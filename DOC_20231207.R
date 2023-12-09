@@ -1,6 +1,7 @@
 options(repos='http://cran.rstudio.com/')
 pkgs<-c("tidyverse", "reshape2","cluster","RColorBrewer","plotrix","data.table", "reshape2",
-        "viridis", "MASS", "survival", "ggplot2", "ggpubr", "glmnet", "plyr", "dplyr", "sf", "concaveman", "deldir", "ggvoronoi", "spatstat", "readxl", "ggrepel")
+        "viridis", "MASS", "survival", "ggplot2", "ggpubr", "glmnet", "plyr", "dplyr", "sf", 
+        "concaveman", "deldir", "ggvoronoi", "spatstat", "readxl", "ggrepel")
 lapply(pkgs, require, character.only=TRUE)
 detach("package:dplyr", unload=TRUE)
 library(dplyr)
@@ -685,39 +686,64 @@ names(doc_morphvs)
 glm_clinical <- doc_morphvs %>% filter(!is.na(Path)) %>% droplevels() %>% 
   mutate(SiteGrp = ifelse(SiteRisk %in% c("1", "2"), "BM/GING/HP", "TONG/FOM"))
 
+# mylogit <- glm(Path ~ Age+SmokingHx+SiteGrp, family = "binomial", data = glm_clinical)
+# mylogit <- glm(Path ~ Age, family = "binomial", data = glm_clinical)
+# summary(mylogit)
+# 
+# coef(summary(mylogit))[,4]
+# confint(mylogit)
+# 
+# cbind(exp(cbind(OR = coef(mylogit), confint(mylogit))), "p" = coef(summary(mylogit))[,4]) %>% as.data.frame() %>% rownames_to_column(., var = "m") %>% filter(!(m == "(Intercept)"))
+
 names(glm_clinical)
-
-mylogit <- glm(Path ~ Age+SmokingHx+SiteGrp, family = "binomial", data = glm_clinical)
-#summary(mylogit)
-#confint(mylogit)
-exp(cbind(OR = coef(mylogit), confint(mylogit)))
-
-covariates <- c("Age", "SmokingHx", "Site")
+covariates <- c("Age", "SmokingHx", "SiteGrp")
+covariates <- names(glm_clinical[28:65]) # bins of ploidy
+covariates <- names(glm_clinical[3:6]) # counts of ploidy
+covariates <- names(glm_clinical[c(16:18)]) # proportion of ploidy
+covariates <- names(glm_clinical[c(93:94)]) # proportion of ploidy
 
 univ_formulas <- sapply(covariates, function(x) as.formula(paste('Path~', x)))
 univ_models <- lapply(univ_formulas, function(x){glm(x, data=glm_clinical, family = "binomial")})
 
 univ_results <- lapply(univ_models,
                        function(x){
-                         x <- summary(x)
-                         p.value <- signif(x$coefficients[2, "Pr(>|z|)"], digits=2)
-                         OR <- signif(x$coefficients[2, "Estimate"], digits=2);
-                         #HRLower <- signif(x$conf.int[,"lower .95"],2)
-                         #HRUpper <- signif(x$conf.int[,"upper .95"],2)
-                         #HR.95 <- paste(HR, " (", HRLower, "-", HRUpper,")", sep="")
-                         res<-c(OR, p.value)
-                         #names(res)<-c("beta", "HR.95", "logrank", "p.value")
-                         return(res)
-                       })
-
+                         x <- cbind(exp(cbind(OR = coef(x), confint(x))), coef(summary(x))[,4])
+                         return(x)})
 univ_results
 
-coxres<-t(as.data.frame(univ_results, check.names=FALSE))
-coxres<-data.frame(coxres)
+# multivariate
+multi_formula <- as.formula(paste('Path~', paste(covariates, collapse = "+")))
+multi_models <- glm(multi_formula, family = "binomial", data = glm_clinical)
+multi_results <- cbind(exp(cbind(OR = coef(multi_models), confint(multi_models))), coef(summary(multi_models))[,4])
+# single_logit_tbl <- list()
+# for (m in names(glm_clinical[c(which(colnames(glm_clinical) %in% covariates))])){
+#   single_logit <- glm(Path ~ glm_clinical[[m]], family = "binomial", data = glm_clinical)
+#   #single_logit_m_tbl[[m]] <- cbind(exp(cbind(OR = coef(single_logit[[m]]), confint(single_logit[[m]]))), "p" = coef(summary(single_logit[[m]]))[,4]) %>% 
+#   single_logit_m_tbl[[m]] <- matrix(cbind(exp(cbind(OR = coef(single_logit), confint(single_logit))), "p" = coef(summary(single_logit))[,4]), nrow = 1) 
+#   single_loigt_m_list <- list(single_logit_m_tbl[[m]])
+#   #%>% 
+#    # as.data.frame() %>% rownames_to_column(., var = "mvar") %>% filter(!(mvar == "(Intercept)")) %>% mutate(mvar = m)
+# }
 
-str(summary(glm(Path ~ Age, family = "binomial", data = glm_clinical)))
+binname_order <- factor(c(binname, "bin999"), levels = c(binname, "bin999"))
+binglm <- read_excel("glm_uni_bin.xlsx", 1) %>% mutate(variable = as.factor(variable)) %>%
+  mutate(variable = factor(variable, levels = binname_order))
+coglm <- read_excel("glm_uni_bin.xlsx",2) %>% mutate(variable = as.factor(variable))
+pcoglm <- read_excel("glm_uni_bin.xlsx",3) %>%
+  mutate(variable = factor(variable, levels = c("%diploid", "%cycling", "%tetraploid", "%aneuploid", "%normal", "%abnormal")))
+m_pcoglm <- read_excel("glm_uni_bin.xlsx",4) %>%
+  mutate(variable = factor(variable, levels = c("%cycling", "%tetraploid", "%aneuploid")))
 
-summary(glm(Path ~ Age, family = "binomial", data = glm_clinical))$coefficients[2,4]
+ggplot(data = m_pcoglm, aes(x = OR, y = variable))+
+  geom_errorbarh(aes(xmin = LowCI, xmax = HighCI))+
+  geom_point(pch = 22, size = 4,fill = "gray")+
+  geom_vline(aes(xintercept = 1), linetype = 2)+
+  scale_x_continuous(limits = c(0, max(pcoglm$HighCI)+1), breaks = seq(0,  max(pcoglm$HighCI)+1))+
+  xlab("Adjusted Odds Ratio")+ ylab("Proportion of Cell Count in Ploidy Groups")+
+  theme(axis.text.x = element_text(angle = 0), panel.background = element_blank(),
+        axis.line.x = element_line(color = "black"))
+
+# multivariate regression with adjusted odds ratio that controls for other predicotr varaibles
 
 ####### TABLES AND FIGURES #############
 # table of clinical variables ----
